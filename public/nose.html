@@ -1,0 +1,253 @@
+<html>
+  <head>
+
+    <!-- BELOW are added by Rae from p5.js index.html file to enable the script to use p5.js' library  -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.1.9/p5.js"></script>
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.1.9/addons/p5.sound.min.js"></script> -->
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <script src="https://unpkg.com/ml5@0.4.3/dist/ml5.min.js"></script>
+    <meta charset="utf-8" />
+    <!-- ABOVE are added by Rae from p5.js index.html file to enable the script to use p5.js' library  -->
+
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <script type="text/javascript">
+
+        var socket = io.connect();
+
+// BELOW from p5.js
+//Created 10.04.2020 for Live Web: Control video to move around the canvas with nose
+let video;
+let poseNet;
+let pose;
+//define user's given location.
+let userX;
+let userY;
+
+function setup(){
+  poseNet = ml5.poseNet(video, modelReady);
+  poseNet.on('pose', gotPoses);
+
+}
+
+function modelReady() {
+  console.log('model ready');
+}
+
+function gotPoses(poses) {
+  if (poses.length > 0) {
+    pose = poses[0].pose;
+    // nose = pose.nose;//老师放进去的，重新call了一次pose.nose去更新这个初始位置是0的鼻子位置，这样draw里面才能一直loop
+    // console.log(nose, “function gotPoses worked!”)；
+  }
+}
+// ABOVE from p5.js
+
+
+        let people = [];
+        let myfilter = 0;
+        let myLocation = {
+          x: 42,
+          y: 42
+        }
+        let nose = {x: 0, y: 0};//nose初始位置0，0
+
+        socket.on('connect', function() {
+    				console.log("Connected");
+    			});
+
+
+       window.addEventListener('load', function(){
+
+         let video = document.getElementById('myvideo');
+         let canvas = document.getElementById('mycanvas');
+         // let img = document.getElementById('myimage')
+         let ctx = canvas.getContext('2d');
+
+
+         // Constraints - what do we want?
+         let constraints = { audio: false, video: true }
+
+         // Prompt the user for permission, get the stream
+         navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
+         	/* Use the stream */
+
+	        // Attach to our video object
+  	         video.srcObject = stream;
+
+  	       // Wait for the stream to load enough to play
+  	         video.onloadedmetadata = function(e) {
+  		           video.play();
+                //
+                 draw();
+  	         };
+         })
+
+          .catch(function(err) {
+              /* Handle the error */
+             alert(err);
+            });
+
+
+
+
+            function draw(){
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            //  ctx2.drawImage(video, 0, 0, canvas2.width, canvas2.height);
+
+              let datatosend = {
+                image: canvas.toDataURL(),
+                filter: myfilter,
+                location: myLocation,
+                noselocation:nose
+                //nosex:nose.x,
+                //nosey:nose.y
+
+              }
+              socket.emit('sendImage', datatosend);
+
+
+              //window.requestAnimationFrame(draw);
+              window.setTimeout(draw, 500);
+            }
+
+
+
+
+
+            let huebutton = document.getElementById("huebutton");
+            huebutton.addEventListener("click", function () {
+              myfilter = 1;
+            });
+
+            let graybutton = document.getElementById("graybutton");
+            graybutton.addEventListener("click", function () {
+              myfilter = 2;
+            });
+
+            let invertbutton = document.getElementById("invertbutton");
+            huebutton.addEventListener("click", function () {
+              myfilter = 3;
+            });
+
+            let contrastbutton = document.getElementById("contrastbutton");
+            contrastbutton.addEventListener("click", function () {
+              myfilter = 4;
+            });
+
+            let sepiabutton = document.getElementById("sepiabutton");
+            sepiabutton.addEventListener("click", function () {
+              myfilter = 5;
+            });
+
+
+
+            document.onkeydown = function(event) {
+              console.log(event.key)
+              if (event.key === 'a') {
+                myLocation.x -= 10;
+              }
+              if(event.key ==='d'){
+                myLocation.x += 10;
+              }
+              if(event.key ==='w'){
+                myLocation.y -= 10;
+              }
+              if(event.key ==='s'){
+                myLocation.y += 10;
+              }
+            }
+
+
+
+
+            // Receive a message
+      			socket.on('receiveImage', function(data) {
+              // let image = data.image;
+              // let id = data.id;
+              let x = data.location.x;
+              let y = data.location.y;
+              let nosex = data.noselocation.x;
+              let nosey = data.noselocation.y;
+
+
+              let img = document.getElementById(data.id);
+              if (img) {
+                if(pose){
+                  console.log("received pos.nose data in function(draw)");
+                  let nose = pose.nose;
+                  console.log(data.location);
+                  //img.src = data.image;
+                  img.style.left = (x + nosex) +'px';
+                  img.style.top = (y + nosey) +'px';
+                  // img.style.top =  y + '%' + data.nosey;
+                  //思路就是，nose用的是pixel单位而左右移动用的是百分比，必须要统一单位才能搞
+
+                  console.log(data.nosex, 'detect nose moving!Final!')
+                  img.setAttribute("class", "filter" + data.filter);
+
+                  // image(video, nose.x + userX, nose.y + userY);
+                }else{
+                  img.src = data.image;
+                  img.style.left = x +'%';
+                  img.style.top = y +'%';
+                  // img.style.top =  y + '%' + data.nosey;
+                  //思路就是，nose用的是pixel单位而左右移动用的是百分比，必须要统一单位才能搞
+
+                  console.log(data.nosex, 'detect nose moving!Final!')
+                  img.setAttribute("class", "filter" + data.filter);
+                }
+                // console.log(data.location);
+                // img.src = data.image;
+
+                // img.style.left = x + '%';
+                // img.style.top =  y + '%';
+                // img.setAttribute("class", "filter" + data.filter);
+              } else {
+                let person = new Image();
+                person.setAttribute("id", data.id);
+                person.src = data.image;
+                person.style.position = 'absolute';
+                document.body.appendChild(person);
+              }
+
+
+      	});
+
+      });
+
+    </script>
+  </head>
+  <body>
+    <!-- BELOW used to enable p5.js script to use here-->
+    <!-- <script src="sketch.js"></script> -->
+    <!-- ABOVE used to enable p5.js script to use here-->
+    <p class ="club"><b>TNO Coding Club</b></p>
+    <div id="buttons">
+      <input type="button" value="FANCY MODE" id="huebutton">
+       <input type="button" value="GREY" id="graybutton"/>
+       <input type="button" value="INVERT" id="invertbutton"/>
+       <input type="button" value="CONTRAST" id="contrastbutton"/>
+       <input type="button" value="HUE" id="sepiabutton"/>
+
+    </div>
+
+    <p class="instruction"><b>Press "FANCY MODE" "GREY" "INVERT" "CONTRAST" "HUE" to change your filter<br>Use 'w' 'a' 's' 'd' to move up, left, down, right</b></p>
+    <p class="thanks">Special thanks: Jason, Esther, Stacy, Yining</p>
+    <p class="made">Made by Rae / Marcel</p>
+
+
+    <video id="myvideo" width="200" height="150" ></video>
+    <canvas id="mycanvas" width="200" height="150"></canvas>
+
+</body>
+</html>
+
+
+
+<!-- <audio controls autoplay=“autoplay” loop>
+  <source src='https://drive.google.com/file/d/1R4wDbwf6qERkgulsl_aAzwmoeG5OKSiI/view' />Play</audio> -->
+  <!-- <iframe src="https://drive.google.com/file/d/1R4wDbwf6qERkgulsl_aAzwmoeG5OKSiI/view?usp=sharing" allow="autoplay" style="display:none" id="iframeAudio"> -->
+<!-- </iframe> -->
+    <!-- <a controls href="https://www.computerhope.com/jargon/m/example.mp3">Play sound file</a> -->
+ <!-- <embed src="https://www.computerhope.com/jargon/m/example.mp3" hidden="true" autostart="true" loop="true">hhhhh</embed> -->
